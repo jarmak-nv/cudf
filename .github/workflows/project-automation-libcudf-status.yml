@@ -1,0 +1,126 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This action performs two tasks:
+    # 1 - If a PR is opened by someone not in RAPIDS org, ensure “External Contribution” status is set in the libcudf project
+    # 2 - If issue is “Needs owner” status and a linked PR opens, add “Burndown PRs” status to the PR
+
+name: Project Automation - libcudf project
+
+on:
+    pull_request_target:
+        # We use pull_request_target instead of pull_request for access to a secret so we can modify the project
+        # Run this action when a PR is opened or edited
+        # Editing makes this run if someone adds Closes #123 to the PR description
+        # Otherwise we could miss linked issues
+        types: [opened, edited]
+
+env:
+    PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+
+    # The environment vars below are hard-coded from external queries to save time + complexity here
+    # Note: PVT means Project V2, not "Private"
+    # PVT = Project V2, PVTSSF = Project V2 Single Select Field, PVTIF = Project V2 Iteration Field
+    PROJECT_ID: "PVT_kwDOABpemM4AEhOI"
+    STATUS_FIELD_ID: "PVTSSF_lADOAp2shc4AKVDczgGbaZA"
+    EXTERNAL_CONTRIBUTION_STATUS_OPTION_ID: "51691096"
+    BURNDOWN_PRS_STATUS_OPTION_ID: "f75ad846"
+
+jobs:
+    External_Contributor_Automation:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Determine if it's an external contributor
+              id: set_external_contributor
+              run: |
+                # If github.event.pull_request.author_association isn't either "OWNER" or "MEMBER"
+                # Then set EXTERNAL_CONTRIBUTOR to true otherwise set it to false
+                # We could do this as an 'if' statement in the workflow but it's easier to read here
+
+                if [[ "${{ github.event.pull_request.author_association }}" != "OWNER" && "${{ github.event.pull_request.author_association }}" != "MEMBER" ]]; then
+                    echo "::set-output name=EXTERNAL_CONTRIBUTOR::true
+                else
+                    echo "::set-output name=EXTERNAL_CONTRIBUTOR::false
+                fi
+
+            - name: Set External Contributor Status
+              if: steps.set_external_contributor.outputs.EXTERNAL_CONTRIBUTOR == 'true'
+              id: set_external_contributor_status
+              run: |
+                # if the PR is opened by an external contributor, set the status to "External Contribution"
+                # first we need to get the item ID for the PR, then we can change it
+                gh api graphql -f query=''
+
+    Make_PR_Burndown_Status:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Check for Linked Issues
+            id: check_linked_issues
+            run: |
+                gh api graphql -f query='
+                query {
+                    node(id: "${{ env.PR_NODE_ID }}") {
+                      ... on PullRequest {
+                        closingIssuesReferences(first: 10) {
+                          nodes{
+                            projectItems(first:10){
+                              nodes{
+                                id
+                                project{
+                                  id
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }' > linked_issues.json
+
+                # Filter the json result to only the project-specific ID for the item(s)
+                items_in_project=$(jq -r '.data.node.closingIssuesReferences.nodes[].projectItems.nodes[] |
+                                  select(.project.id == "${{ env.PROJECT_ID }}") |
+                                  .id' linked_issues.json)
+
+          - name: Get PR Project ID
+            if: github.event_name == 'pull_request_target'
+            id: get_pr_id
+            env:
+                GITHUB_TOKEN: ${{ secrets.PLACEHOLDER_TOKEN }}
+            run: |
+                # Query up to 10 projects for the PR
+                gh api graphql -f query='
+                query {
+                    node(id: "${{ env.PR_NODE_ID }}") {
+                        ... on PullRequest {
+                                projectItems(first: 10) {
+                                    nodes {
+                                        id
+                                        project {
+                                            id
+                                        }
+                                    }
+                                }
+                        }
+                    }
+                }' > project_data.json
+                
+                # Filter the json result to only the project-specific ID for the item
+                # An item can be in multiple projects so we need to filter by the project ID we want
+                item_project_id=$(jq -r '.data.node.projectItems.nodes[] |
+                                  select(.project.id == "${{ env.PROJECT_ID }}") |
+                                  .id' project_data.json)
+                echo "ITEM_PROJECT_ID=$item_project_id" >> $GITHUB_ENV
+            continue-on-error: true
