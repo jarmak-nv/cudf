@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Project - libcudf external contribution
+# If a PR is opened by someone not a part of cuDF and it is in the libcudf project
+#  ensure “External Contribution” status is set in the libcudf project
+
+on:
+    pull_request_target:
+        # We use pull_request_target instead of pull_request since PRs come from forks
+        # Run this action when a PR is opened or edited
+        # Editing makes this run if someone adds Closes #123 to the PR description
+        # Otherwise we could miss linked issues
+        types: [opened, edited]
+
+jobs:
+  get-project-id:
+    uses: rapidsai/shared-workflows/.github/workflows/project-get-item-id.yaml@project-automation-components
+    secrets: inherit
+    if: github.event.pull_request.author_association != "OWNER" && github.event.pull_request.author_association != "MEMBER"
+    permissions:
+      contents: read
+    with:
+      PROJECT_ID: "PVT_kwDOAp2shc4AKVDc"
+      ITEM_NODE_ID: "${{ github.event.pull_request.node_id }}"
+
+  update-status-external-contribution:
+    uses: rapidsai/shared-workflows/.github/workflows/project-get-set-single-select-field.yaml@project-automation-components
+    needs: get-project-id
+    secrets: inherit
+    if: github.event.pull_request.author_association != "OWNER" && github.event.pull_request.author_association != "MEMBER"
+    permissions:
+      contents: read
+    with:
+      PROJECT_ID: "PVT_kwDOAp2shc4AKVDc"
+      SINGLE_SELECT_FIELD_ID: "PVTSSF_lADOAp2shc4AKVDczgGbaZA"
+      SINGLE_SELECT_FIELD_NAME: "Status"
+      SINGLE_SELECT_OPTION_VALUE: "External Contribution"
+      ITEM_PROJECT_ID: "${{ needs.get-project-id.outputs.ITEM_PROJECT_ID }}"
+      ITEM_NODE_ID: "${{ github.event.pull_request.node_id }}"
+      UPDATE_ITEM: true
+      UPDATE_LINKED_ISSUES: true
