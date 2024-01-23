@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Project Automation - libcudf project
+name: Project - libcudf external contribution
 # If a PR is opened by someone not a part of cuDF and it is in the libcudf project
 #  ensure “External Contribution” status is set in the libcudf project
 
 on:
     pull_request_target:
-        # We use pull_request_target instead of pull_request for access to a secret so we can modify the project
+        # We use pull_request_target instead of pull_request since PRs come from forks
         # Run this action when a PR is opened or edited
         # Editing makes this run if someone adds Closes #123 to the PR description
         # Otherwise we could miss linked issues
@@ -30,6 +30,8 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/project-get-item-id.yaml@project-automation-components
     secrets: inherit
     if: github.event.pull_request.author_association != "OWNER" && github.event.pull_request.author_association != "MEMBER"
+    permissions:
+      contents: read
     with:
       PROJECT_ID: "PVT_kwDOAp2shc4AKVDc"
       ITEM_NODE_ID: "${{ github.event.pull_request.node_id }}"
@@ -39,6 +41,8 @@ jobs:
     needs: get-project-id
     secrets: inherit
     if: github.event.pull_request.author_association != "OWNER" && github.event.pull_request.author_association != "MEMBER"
+    permissions:
+      contents: read
     with:
       PROJECT_ID: "PVT_kwDOAp2shc4AKVDc"
       SINGLE_SELECT_FIELD_ID: "PVTSSF_lADOAp2shc4AKVDczgGbaZA"
